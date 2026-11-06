@@ -5,7 +5,7 @@ class Library {
   void addItem(LibraryItem item){
     items.add(item);
   }
-  searchByTitle (String? query){
+  List<dynamic> searchByTitle (String? query){
     if (query ==null || query.isEmpty){
       return [];
     }
@@ -17,7 +17,7 @@ class Library {
     }
     return foundItemsByTitle;
   }
-  getItemsByAuthor(String? author){
+  List<dynamic> getItemsByAuthor(String? author){
     if (author==null || author.isEmpty){
       return [];
     }
@@ -30,7 +30,7 @@ class Library {
   }
     return foundItemsByAuthor;
   }
-  getRecentItems(){
+  List<LibraryItem> getRecentItems(){
     List<LibraryItem> recentItems = List.from(items);
    recentItems.sort((a, b) {
     if (a.publishDate == null) return 1;  // 'a' nu are dată, trece mai la spate
