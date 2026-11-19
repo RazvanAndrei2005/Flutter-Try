@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../api/todo_api.dart';
 import '../models/todo.dart';
 
 class TodoScreen extends StatefulWidget {
@@ -9,10 +10,60 @@ class TodoScreen extends StatefulWidget {
 }
 
 class _TodoScreenState extends State<TodoScreen> {
+  final TodoApi _api = TodoApi();
   final List<Todo> _todos = [];
+  final List<String> _retryLogs = [];
   final TextEditingController _textController = TextEditingController();
 
-  String? _filter;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _verifyEquatable();
+    _loadTodos('/todos');
+  }
+
+  void _verifyEquatable() {
+    const a = Todo(userId: 1, id: 1, title: 'delectus aut autem', completed: false);
+    const b = Todo(userId: 1, id: 1, title: 'delectus aut autem', completed: false);
+    debugPrint('Task I Equatable check (a == b): ${a == b}');
+  }
+
+  Future<void> _loadTodos(String path) async {
+    setState(() {
+      _isLoading = true;
+      _retryLogs.clear();
+      _retryLogs.add('Requesting GET $path ...');
+    });
+
+    try {
+      final fetched = await _api.fetchTodos(
+        path: path,
+        onRetryLog: (msg) {
+          if (!mounted) return;
+          setState(() {
+            _retryLogs.add(msg);
+          });
+        },
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _todos
+          ..clear()
+          ..addAll(fetched);
+        _retryLogs.add('Success: Loaded ${fetched.length} todos.');
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _retryLogs.add('Request terminated with error.');
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -24,10 +75,13 @@ class _TodoScreenState extends State<TodoScreen> {
     final text = _textController.text.trim();
     if (text.isNotEmpty) {
       setState(() {
-        _todos.add(
+        _todos.insert(
+          0,
           Todo(
-            identifier: DateTime.now().millisecondsSinceEpoch,
+            userId: 1,
+            id: DateTime.now().millisecondsSinceEpoch,
             title: text,
+            completed: false,
           ),
         );
       });
@@ -35,28 +89,9 @@ class _TodoScreenState extends State<TodoScreen> {
     }
   }
 
-  int _calculateCompletedCountBug1() {
-    int completedCount = 0;
-    for (var i = 0; i <= _todos.length; i++) {
-      if (_todos[i].isDone) {
-        completedCount++;
-      }
-    }
-    return completedCount;
-  }
-
-  void _toggleTodoBug2(int index) {
-    _todos[index].isDone = !_todos[index].isDone;
-  }
-
-  int _countMatchingFilterBug3() {
-    final visible = _todos.where((t) => t.title.contains(_filter!));
-    return visible.length;
-  }
-
-  void _toggleTodo(Todo todo, bool? value) {
+  void _toggleTodo(int index, bool? value) {
     setState(() {
-      todo.isDone = value ?? false;
+      _todos[index] = _todos[index].copyWith(completed: value ?? false);
     });
   }
 
@@ -85,18 +120,51 @@ class _TodoScreenState extends State<TodoScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Todo List - Lab 3'),
+        title: const Text('Todo List - Lab 4'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.bug_report),
-            onPressed: () {
-              _calculateCompletedCountBug1();
-            },
+          TextButton.icon(
+            onPressed: _isLoading ? null : () => _loadTodos('/todos'),
+            icon: const Icon(Icons.refresh),
+            label: const Text('/todos'),
+          ),
+          TextButton.icon(
+            onPressed: _isLoading ? null : () => _loadTodos('/nope'),
+            icon: const Icon(Icons.warning_amber, color: Colors.orange),
+            label: const Text('Test /nope'),
           ),
         ],
       ),
       body: Column(
         children: [
+          if (_retryLogs.isNotEmpty)
+            Container(
+              width: double.infinity,
+              color: Colors.grey.shade900,
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Network & Retry Log:',
+                    style: TextStyle(
+                      color: Colors.greenAccent,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  ..._retryLogs.map(
+                    (log) => Text(
+                      log,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
@@ -119,6 +187,7 @@ class _TodoScreenState extends State<TodoScreen> {
               ],
             ),
           ),
+          if (_isLoading) const LinearProgressIndicator(),
           Expanded(
             child: ListView.builder(
               itemCount: _todos.length,
@@ -126,7 +195,7 @@ class _TodoScreenState extends State<TodoScreen> {
                 final todo = _todos[index];
 
                 return Dismissible(
-                  key: ValueKey(todo.identifier),
+                  key: ValueKey(todo.id),
                   direction: DismissDirection.endToStart,
                   background: Container(
                     color: Colors.red,
@@ -139,7 +208,7 @@ class _TodoScreenState extends State<TodoScreen> {
                   },
                   child: TodoTile(
                     todo: todo,
-                    onChanged: (value) => _toggleTodo(todo, value),
+                    onChanged: (value) => _toggleTodo(index, value),
                   ),
                 );
               },
@@ -169,10 +238,11 @@ class TodoTile extends StatelessWidget {
         title: Text(
           todo.title,
           style: TextStyle(
-            decoration: todo.isDone ? TextDecoration.lineThrough : null,
+            decoration: todo.completed ? TextDecoration.lineThrough : null,
           ),
         ),
-        value: todo.isDone,
+        subtitle: Text('ID: ${todo.id} • User: ${todo.userId}'),
+        value: todo.completed,
         onChanged: onChanged,
       ),
     );
